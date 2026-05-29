@@ -1,6 +1,0 @@
-repositories:
-
-  json:
-    type: git
-    url: https://github.com/nlohmann/json
-    version: master
