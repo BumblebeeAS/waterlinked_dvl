@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.24)
+cmake_minimum_required(VERSION 3.22)
 project(
     libwaterlinked
     VERSION 0.0.1
@@ -21,12 +21,12 @@ add_library(libwaterlinked SHARED)
 target_sources(
     libwaterlinked
     PRIVATE src/client.cpp src/protocol.cpp
+)
+target_include_directories(
+    libwaterlinked
     PUBLIC
-        FILE_SET HEADERS
-        BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/include
-        FILES
-            ${CMAKE_CURRENT_SOURCE_DIR}/include/libwaterlinked/client.hpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/include/libwaterlinked/protocol.hpp
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 target_compile_features(libwaterlinked PUBLIC cxx_std_20)
 target_link_libraries(
@@ -56,7 +56,12 @@ install(
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    FILE_SET HEADERS
+    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+
+install(
+    DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
 if(BUILD_TESTING)

@@ -33,7 +33,7 @@ waterlinked_dvl_driver:
 
   mounting_rotation_offset:
     type: int
-    default_value: 180
+    default_value: 0
     description: "The mounting rotation offset of the DVL (degrees)."
     read_only: true
     validation:
@@ -41,7 +41,7 @@ waterlinked_dvl_driver:
 
   acoustic_enabled:
     type: bool
-    default_value: true
+    default_value: false
     description: "Whether or not the acoustic waves are enabled."
     read_only: true
 

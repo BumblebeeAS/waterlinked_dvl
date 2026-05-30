@@ -31,7 +31,7 @@ from lifecycle_msgs.msg import Transition
 
 
 def generate_launch_description():
-    declare_ns = DeclareLaunchArgument("ns", default_value="")
+    declare_ns = DeclareLaunchArgument("ns", default_value="auv5")
     declare_parameters_file = DeclareLaunchArgument(
         "parameters_file",
         default_value=PathJoinSubstitution(
