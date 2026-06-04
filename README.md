@@ -18,11 +18,10 @@ of your ROS 2 workspace
 git clone git@github.com:waterlinked/waterlinked_dvl.git
 ```
 
-Then install the project dependencies using vcstool and rosdep
+Then install the project dependencies using rosdep
 
 ```bash
-vcs import src < src/waterlinked_dvl/ros2.repos && \
-rosdep install --from paths src -y --ignore-src --skip-keys nlohmann_json
+rosdep install --from paths src -y --ignore-src
 ```
 
 Finally, build the workspace using colcon
