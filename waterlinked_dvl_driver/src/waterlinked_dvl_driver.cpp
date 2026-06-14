@@ -136,6 +136,13 @@ auto WaterLinkedDvlDriver::on_configure(const rclcpp_lifecycle::State & /*previo
     "~/dead_reckoning_report", rclcpp::SystemDefaultsQoS());
 
   client_->register_callback([this](const VelocityReport & report) {
+    // Don't publish anything when the device reports the velocity as invalid; emitting bad velocity would corrupt
+    // downstream consumers (e.g. a robot_localization filter fusing the odometry twist).
+    if (!report.velocity_valid) {
+      RCLCPP_WARN(get_logger(), "DVL reported an invalid velocity; skipping velocity and odometry publication.");
+      return;
+    }
+
     const auto t = std::chrono::time_point_cast<std::chrono::nanoseconds>(report.time_of_validity);
     dvl_msg_.header.stamp = rclcpp::Time(t.time_since_epoch().count());
     dvl_msg_.altitude = report.altitude;
@@ -166,6 +173,12 @@ auto WaterLinkedDvlDriver::on_configure(const rclcpp_lifecycle::State & /*previo
 
   // much of the following code could be moved into the above callback, but we separate it to improve readability
   client_->register_callback([this](const VelocityReport & report) {
+    // As above: skip the odometry twist update entirely when the velocity is invalid rather than feeding bad data into
+    // a downstream filter.
+    if (!report.velocity_valid) {
+      return;
+    }
+
     const auto t = std::chrono::time_point_cast<std::chrono::nanoseconds>(report.time_of_validity);
     odom_msg_.header.stamp = rclcpp::Time(t.time_since_epoch().count());
 
