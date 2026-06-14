@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
 
 #include "geometry_msgs/msg/pose_with_covariance_stamped.hpp"
@@ -66,6 +67,9 @@ private:
   std::shared_ptr<rclcpp::Service<std_srvs::srv::SetBool>> enable_acoustic_srv_;
   std::shared_ptr<rclcpp::Service<std_srvs::srv::SetBool>> enable_dark_mode_srv_;
   std::shared_ptr<rclcpp::Service<std_srvs::srv::SetBool>> enable_periodic_cycling_srv_;
+  std::shared_ptr<rclcpp::Service<std_srvs::srv::SetBool>> enable_movement_srv_;
+
+  std::atomic<bool> enable_movement_{true};
 
   std::shared_ptr<rclcpp::Service<std_srvs::srv::Trigger>> calibrate_gyro_srv_;
   std::shared_ptr<rclcpp::Service<std_srvs::srv::Trigger>> reset_dead_reckoning_srv_;
