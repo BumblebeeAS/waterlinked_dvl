@@ -31,7 +31,7 @@ namespace waterlinked::ros
 namespace
 {
 
-constexpr double STATIONARY_COVARIANCE = 1e-6;
+constexpr double STATIONARY_COVARIANCE = 1.0;
 
 auto populate_service_response(
   std::shared_ptr<std_srvs::srv::SetBool::Response> & response,
@@ -90,13 +90,31 @@ auto WaterLinkedDvlDriver::on_configure(const rclcpp_lifecycle::State & /*previo
     params_.range_mode,
     params_.periodic_cycling_enabled,
   };
-  std::future<CommandResponse> f = client_->set_configuration(config);
 
+  std::future<CommandResponse> f = client_->set_configuration(config);
   const CommandResponse response = f.get();
   if (!response.success) {
     RCLCPP_ERROR(get_logger(), "Failed to set DVL configuration: %s", response.error_message.c_str());  // NOLINT
     return CallbackReturn::ERROR;
   }
+  RCLCPP_INFO(get_logger(), "DVL configuration set successfully");
+
+  std::future<CommandResponse> set_ntp_f = client_->set_time_ntp(params_.ntp_address);
+  const CommandResponse set_ntp_response = set_ntp_f.get();
+  if (!set_ntp_response.success) {
+    RCLCPP_ERROR(
+      get_logger(), "Failed to set NTP configuration: %s", set_ntp_response.error_message.c_str());  // NOLINT
+    return CallbackReturn::ERROR;
+  }
+  RCLCPP_INFO(get_logger(), "NTP configuration set successfully");
+
+  std::future<CommandResponse> force_ntp_f = client_->force_sync_ntp(params_.timeout);
+  const CommandResponse force_ntp_response = force_ntp_f.get();
+  if (!force_ntp_response.success) {
+    RCLCPP_ERROR(get_logger(), "Failed to force NTP sync: %s", force_ntp_response.error_message.c_str());  // NOLINT
+    return CallbackReturn::ERROR;
+  }
+  RCLCPP_INFO(get_logger(), "Forced NTP sync successfully");
 
   // Pre-populate the sensor state messages with known, static values
   dvl_msg_.header.frame_id = params_.frame_id;
@@ -161,13 +179,6 @@ auto WaterLinkedDvlDriver::on_configure(const rclcpp_lifecycle::State & /*previo
       return;
     }
 
-    // Don't publish anything when the device reports the velocity as invalid; emitting bad velocity would corrupt
-    // downstream consumers (e.g. a robot_localization filter fusing the odometry twist).
-    if (!report.velocity_valid) {
-      RCLCPP_WARN(get_logger(), "DVL reported an invalid velocity; skipping velocity and odometry publication.");
-      return;
-    }
-
     dvl_msg_.header.stamp = rclcpp::Time(t.time_since_epoch().count());
     dvl_msg_.altitude = report.altitude;
     dvl_msg_.velocity.x = report.vx;
@@ -190,6 +201,24 @@ auto WaterLinkedDvlDriver::on_configure(const rclcpp_lifecycle::State & /*previo
       dvl_msg_.beam_velocity[i] = report.transducers[i].velocity;
       dvl_msg_.range[i] = report.transducers[i].distance;
       dvl_msg_.num_good_beams += report.transducers[i].beam_valid ? 1 : 0;
+    }
+
+    // Don't publish anything when the device reports the velocity as invalid; emitting bad velocity would corrupt
+    // downstream consumers (e.g. a robot_localization filter fusing the odometry twist).
+    // DONT GUARD HERE, USE THIS AS A DEBUG STATUS LOG
+    if (!report.velocity_valid) {
+      RCLCPP_WARN(
+        get_logger(),
+        "DVL reported an invalid velocity; skipping velocity and odometry publication. "
+        "fom=%.4f altitude=%.2fm good_beams=%d status=0x%02X v=(%.3f, %.3f, %.3f)",
+        report.fom,
+        report.altitude,
+        dvl_msg_.num_good_beams,
+        report.status,
+        report.vx,
+        report.vy,
+        report.vz);
+      //   return;
     }
 
     dvl_pub_->publish(dvl_msg_);
@@ -216,10 +245,6 @@ auto WaterLinkedDvlDriver::on_configure(const rclcpp_lifecycle::State & /*previo
       return;
     }
 
-    if (!report.velocity_valid) {
-      return;
-    }
-
     odom_msg_.twist.twist.linear.x = report.vx;
     odom_msg_.twist.twist.linear.y = report.vy;
     odom_msg_.twist.twist.linear.z = report.vz;
@@ -228,6 +253,11 @@ auto WaterLinkedDvlDriver::on_configure(const rclcpp_lifecycle::State & /*previo
       for (std::size_t j = 0; j < 3; ++j) {
         odom_msg_.twist.covariance[i * 6 + j] = report.covariance(i, j);
       }
+    }
+
+    if (!report.velocity_valid) {
+      RCLCPP_WARN(get_logger(), "DVL reported an invalid velocity; skipping velocity and odometry publication.");
+      return;
     }
 
     odom_pub_->publish(odom_msg_);
@@ -272,43 +302,43 @@ auto WaterLinkedDvlDriver::on_configure(const rclcpp_lifecycle::State & /*previo
     dead_reckoning_pub_->publish(dead_reckoning_msg_);
   });
 
-  client_->register_callback([this](const DeadReckoningReport & report) {
-    const auto t = std::chrono::time_point_cast<std::chrono::nanoseconds>(report.ts);
-    odom_msg_.header.stamp = rclcpp::Time(t.time_since_epoch().count());
+  //   client_->register_callback([this](const DeadReckoningReport & report) {
+  //     const auto t = std::chrono::time_point_cast<std::chrono::nanoseconds>(report.ts);
+  //     odom_msg_.header.stamp = rclcpp::Time(t.time_since_epoch().count());
 
-    if (!enable_movement_) {
-      odom_msg_.pose.covariance[0] = STATIONARY_COVARIANCE;
-      odom_msg_.pose.covariance[7] = STATIONARY_COVARIANCE;
-      odom_msg_.pose.covariance[14] = STATIONARY_COVARIANCE;
+  //     if (!enable_movement_) {
+  //       odom_msg_.pose.covariance[0] = STATIONARY_COVARIANCE;
+  //       odom_msg_.pose.covariance[7] = STATIONARY_COVARIANCE;
+  //       odom_msg_.pose.covariance[14] = STATIONARY_COVARIANCE;
 
-      // same as above: orientation covariance isn't provided by the DVL so set to -1
-      odom_msg_.pose.covariance[21] = -1;
-      odom_msg_.pose.covariance[28] = -1;
-      odom_msg_.pose.covariance[35] = -1;
+  //       // same as above: orientation covariance isn't provided by the DVL so set to -1
+  //       odom_msg_.pose.covariance[21] = -1;
+  //       odom_msg_.pose.covariance[28] = -1;
+  //       odom_msg_.pose.covariance[35] = -1;
 
-      odom_pub_->publish(odom_msg_);
-      return;
-    }
+  //       odom_pub_->publish(odom_msg_);
+  //       return;
+  //     }
 
-    odom_msg_.pose.pose.position.x = report.x;
-    odom_msg_.pose.pose.position.y = report.y;
-    odom_msg_.pose.pose.position.z = report.z;
+  //     odom_msg_.pose.pose.position.x = report.x;
+  //     odom_msg_.pose.pose.position.y = report.y;
+  //     odom_msg_.pose.pose.position.z = report.z;
 
-    tf2::Quaternion q;
-    q.setRPY(report.roll * M_PI / 180., report.pitch * M_PI / 180., report.yaw * M_PI / 180.);
-    odom_msg_.pose.pose.orientation = tf2::toMsg(q);
+  //     tf2::Quaternion q;
+  //     q.setRPY(report.roll * M_PI / 180., report.pitch * M_PI / 180., report.yaw * M_PI / 180.);
+  //     odom_msg_.pose.pose.orientation = tf2::toMsg(q);
 
-    odom_msg_.pose.covariance[0] = report.std;
-    odom_msg_.pose.covariance[7] = report.std;
-    odom_msg_.pose.covariance[14] = report.std;
+  //     odom_msg_.pose.covariance[0] = report.std;
+  //     odom_msg_.pose.covariance[7] = report.std;
+  //     odom_msg_.pose.covariance[14] = report.std;
 
-    // same as above: orientation covariance isn't provided by the DVL so set to -1
-    odom_msg_.pose.covariance[21] = -1;
-    odom_msg_.pose.covariance[28] = -1;
-    odom_msg_.pose.covariance[35] = -1;
+  //     // same as above: orientation covariance isn't provided by the DVL so set to -1
+  //     odom_msg_.pose.covariance[21] = -1;
+  //     odom_msg_.pose.covariance[28] = -1;
+  //     odom_msg_.pose.covariance[35] = -1;
 
-    odom_pub_->publish(odom_msg_);
-  });
+  //     odom_pub_->publish(odom_msg_);
+  //   });
 
   enable_acoustic_srv_ = create_service<std_srvs::srv::SetBool>(
     "~/enable_acoustic",

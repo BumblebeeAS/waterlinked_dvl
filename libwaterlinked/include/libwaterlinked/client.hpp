@@ -107,6 +107,12 @@ public:
   /// Reset the dead reckoning measurements.
   auto reset_dead_reckoning() -> std::future<CommandResponse>;
 
+  /// Set NTP server configuration.
+  auto set_time_ntp(const std::string & ntp_address) -> std::future<CommandResponse>;
+
+  /// Force NTP sync.
+  auto force_sync_ntp(int timeout_seconds) -> std::future<CommandResponse>;
+
   /// Register a callback to receive the velocity report.
   auto register_callback(std::function<void(const VelocityReport &)> && callback) -> void;
 

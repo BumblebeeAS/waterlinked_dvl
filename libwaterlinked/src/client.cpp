@@ -261,6 +261,16 @@ auto WaterLinkedClient::reset_dead_reckoning() -> std::future<CommandResponse>
   return send_command({{"command", "reset_dead_reckoning"}});
 }
 
+auto WaterLinkedClient::set_time_ntp(const std::string & ntp_address) -> std::future<CommandResponse>
+{
+  return send_command({{"command", "set_time_ntp"}, {"parameters", {{"ntp_address", ntp_address}}}});
+}
+
+auto WaterLinkedClient::force_sync_ntp(int timeout_seconds) -> std::future<CommandResponse>
+{
+  return send_command({{"command", "force_sync_ntp"}, {"parameters", {{"timeout_seconds", timeout_seconds}}}});
+}
+
 auto WaterLinkedClient::register_callback(std::function<void(const VelocityReport &)> && callback) -> void
 {
   velocity_report_callbacks_.emplace_back(std::move(callback));
