@@ -7,7 +7,8 @@
     ip_address: "192.168.194.95"
     # Default port for the DVL-A50 and DVL-125
     port: 16171
-    ntp_address: "192.168.194.54"
+    # NTP server for the DVL's clock: the Jetson's IP on the DVL subnet.
+    ntp_address: "192.168.194.51"
     # Specify a timeout for the DVL connection
     timeout: 5 # seconds
     # All measurements are obtained from the DVL use the following coordinate
@@ -27,8 +28,8 @@
     # Turn off dark mode by default
     dark_mode_enabled: true
     # Set the range mode to auto by default
-    range_mode: "=1"
+    range_mode: "0<=1"
     # Enable periodic cycling by default. This will result in the DVL
     # periodically searching for a bottom lock shorter than the existing bottom
     # lock
-    periodic_cycling_enabled: false
+    periodic_cycling_enabled: true
