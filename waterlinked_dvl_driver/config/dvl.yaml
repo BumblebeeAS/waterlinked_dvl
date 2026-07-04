@@ -28,7 +28,7 @@
     # Turn off dark mode by default
     dark_mode_enabled: true
     # Set the range mode to auto by default
-    range_mode: "0<=1"
+    range_mode: "0<=1" # "0<=1"
     # Enable periodic cycling by default. This will result in the DVL
     # periodically searching for a bottom lock shorter than the existing bottom
     # lock
