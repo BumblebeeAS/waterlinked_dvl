@@ -32,4 +32,4 @@
     # Enable periodic cycling by default. This will result in the DVL
     # periodically searching for a bottom lock shorter than the existing bottom
     # lock
-    periodic_cycling_enabled: true
+    periodic_cycling_enabled: false

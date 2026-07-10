@@ -20,6 +20,7 @@
 
 #include "waterlinked_dvl_driver/waterlinked_dvl_driver.hpp"
 
+#include <chrono>
 #include <cmath>
 
 #include "rclcpp/rclcpp.hpp"
@@ -99,7 +100,28 @@ auto WaterLinkedDvlDriver::on_configure(const rclcpp_lifecycle::State & /*previo
   }
   RCLCPP_INFO(get_logger(), "DVL configuration set successfully");
 
-  std::future<CommandResponse> set_ntp_f = client_->set_time_ntp(params_.ntp_address);
+  // We are the DVL's NTP server. If this host's clock is bad (e.g. boot with no
+  // upstream and a dead RTC leaves it near epoch), don't let the DVL adopt it:
+  // the DVL persists its NTP address and syncs in the background, so skipping is
+  // not enough. Instead redirect it to an unreachable address so it holds its
+  // own time; the next sane-clock boot restores the real server and re-syncs.
+  constexpr auto sane_epoch = std::chrono::seconds(1704067200);  // 2024-01-01 UTC
+  const auto now = std::chrono::system_clock::now().time_since_epoch();
+  const bool clock_is_sane = now >= sane_epoch;
+
+  // RFC 5737 TEST-NET-1: reserved, unroutable, never a real host.
+  constexpr const char * unreachable_ntp_address = "192.0.2.1";
+  const std::string ntp_address = clock_is_sane ? params_.ntp_address : unreachable_ntp_address;
+
+  if (!clock_is_sane) {
+    RCLCPP_WARN(  // NOLINT
+      get_logger(),
+      "System clock is not set to a sane time (before 2024-01-01); pointing the DVL at an unreachable NTP "
+      "address (%s) and skipping force sync so it does not adopt this host's epoch clock.",
+      unreachable_ntp_address);
+  }
+
+  std::future<CommandResponse> set_ntp_f = client_->set_time_ntp(ntp_address);
   const CommandResponse set_ntp_response = set_ntp_f.get();
   if (!set_ntp_response.success) {
     RCLCPP_ERROR(
@@ -108,13 +130,16 @@ auto WaterLinkedDvlDriver::on_configure(const rclcpp_lifecycle::State & /*previo
   }
   RCLCPP_INFO(get_logger(), "NTP configuration set successfully");
 
-  std::future<CommandResponse> force_ntp_f = client_->force_sync_ntp(params_.timeout);
-  const CommandResponse force_ntp_response = force_ntp_f.get();
-  if (!force_ntp_response.success) {
-    RCLCPP_ERROR(get_logger(), "Failed to force NTP sync: %s", force_ntp_response.error_message.c_str());  // NOLINT
-    return CallbackReturn::ERROR;
+  // Only force a sync when we know we are serving a good time.
+  if (clock_is_sane) {
+    std::future<CommandResponse> force_ntp_f = client_->force_sync_ntp(params_.timeout);
+    const CommandResponse force_ntp_response = force_ntp_f.get();
+    if (!force_ntp_response.success) {
+      RCLCPP_ERROR(get_logger(), "Failed to force NTP sync: %s", force_ntp_response.error_message.c_str());  // NOLINT
+      return CallbackReturn::ERROR;
+    }
+    RCLCPP_INFO(get_logger(), "Forced NTP sync successfully");
   }
-  RCLCPP_INFO(get_logger(), "Forced NTP sync successfully");
 
   // Pre-populate the sensor state messages with known, static values
   dvl_msg_.header.frame_id = params_.frame_id;
